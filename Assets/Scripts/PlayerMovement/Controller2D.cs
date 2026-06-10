@@ -15,6 +15,7 @@
 
 using UnityEngine;
 using System.Collections;
+using Unity.VisualScripting;
 
 public class Controller2D : RaycastController
 {
@@ -25,6 +26,7 @@ public class Controller2D : RaycastController
     public LayerMask hazardMask;
 
     public Transform respawnPoint;
+    [SerializeField] NPC_interaction npc_Interaction;
 
     public override void Start()
     {
@@ -49,7 +51,6 @@ public class Controller2D : RaycastController
         {
             VerticalCollisions( ref velocity );
         }
-
         transform.Translate(velocity);
     }
     void HorizontalCollisions(ref Vector3 velocity)
@@ -203,6 +204,7 @@ public class Controller2D : RaycastController
             }
         }
     }
+
 
     public struct CollisionInfo
     {

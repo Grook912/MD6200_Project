@@ -6,7 +6,7 @@ public class GrappleSwing : MonoBehaviour
 
     public float maxWebDistance = 15f;
     public float minWebDistance = 2f;
-    public float swingForce = 1f;
+    public float swingForce = 20f;
     public float normalJumpForce = 7f;
 
     private Vector2 webAttachPoint;
@@ -20,39 +20,37 @@ public class GrappleSwing : MonoBehaviour
     private Rigidbody2D rb;
     public Controller2D controllerScript;
     public PlayerMovement playerMovement;
-    [SerializeField]public GrappleArea grappleArea;
+    [SerializeField] public GrappleArea currentGrappleArea;  
 
-    [SerializeField] float launchForce = 20f;
     [SerializeField] float upwardBoost = 2f;
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         playerMovement = GetComponent<PlayerMovement>();
+        rb.constraints = RigidbodyConstraints2D.FreezeRotation;
     }
 
     void Update()
     {
-        if (!isSwinging)
+        if (!isSwinging && webJoint != null)
         {
             Destroy(webJoint);
             ClearWebLine();
-            rb.linearDamping = 0f;
         }
 
         HandleLanding();
         HandleWebRelease();
-
-        if (grappleArea.canSwing || isSwinging)
+        if ((currentGrappleArea != null && currentGrappleArea.canSwing) || isSwinging)
         {
             HandleWebShooting();
             HandleSwinging();
-            HandleCatapult();
+            HandleWallExit();
         }
 
     }
     void HandleLanding()
     {
-        if (controllerScript.collsionInfo.below)
+        if (controllerScript.collsionInfo.below && !isSwinging)
         {
             rb.linearVelocity = Vector2.zero;
         }
@@ -63,9 +61,9 @@ public class GrappleSwing : MonoBehaviour
         if (controllerScript.collsionInfo.below || isSwinging)
             return;
 
-        if (Input.GetMouseButtonDown(0) && grappleArea.canSwing)
+        if (Input.GetMouseButtonDown(0) && currentGrappleArea.canSwing)
         {
-            Vector2 attachPoint = grappleArea.GetAttachPoint();
+            Vector2 attachPoint = currentGrappleArea.GetAttachPoint();
 
             float distanceToTarget = Vector2.Distance(webOrigin.position, attachPoint);
 
@@ -83,9 +81,13 @@ public class GrappleSwing : MonoBehaviour
     }
     void AttachWeb(Vector2 attachPoint)
     {
-        storedVelocity = rb.linearVelocity;
+        playerMovement.enabled = false;
+        controllerScript.enabled = false;
+
         rb.bodyType = RigidbodyType2D.Dynamic;
-        rb.linearVelocity = storedVelocity;
+        rb.gravityScale = 1f;
+
+        storedVelocity = rb.linearVelocity;
 
         webJoint = gameObject.AddComponent<DistanceJoint2D>();
         webJoint.connectedAnchor = attachPoint;
@@ -101,41 +103,6 @@ public class GrappleSwing : MonoBehaviour
             rb.AddForce(forceDirection * swingForce);
         }
     }
-    void HandleCatapult()
-    {
-        if (!grappleArea.canSwing)
-            return;
-
-        if (Input.GetMouseButtonDown(1) && grappleArea.canSwing)
-        {
-            Vector2 aimDirection = Camera.main.ScreenToWorldPoint(Input.mousePosition) - webOrigin.position;
-
-            RaycastHit2D hit = Physics2D.Raycast(webOrigin.position, aimDirection.normalized, maxWebDistance, AttachableLayers);
-
-            if (hit.collider != null)
-            {
-                LaunchPlayer(hit.point);
-            }
-        }
-    }
-    void LaunchPlayer(Vector2 targetPoint)
-    {
-        // ? IMPORTANT: cancel swing if active
-        if (isSwinging)
-        {
-            Destroy(webJoint);
-            ClearWebLine();
-            isSwinging = false;
-        }
-
-        Vector2 direction = (targetPoint - (Vector2)transform.position).normalized;
-
-        direction.y += upwardBoost;
-        direction.Normalize();
-
-        rb.linearVelocity = Vector2.zero;
-        rb.AddForce(direction * launchForce, ForceMode2D.Impulse);
-    }
     void HandleWebRelease()
     {
         if (webJoint != null && Input.GetMouseButtonUp(0))
@@ -145,16 +112,48 @@ public class GrappleSwing : MonoBehaviour
             Destroy(webJoint);
             ClearWebLine();
             isSwinging = false;
+
             rb.linearDamping = 0f;
 
-            ApplyReleaseJump();
+            playerMovement.enabled = true;
+            controllerScript.enabled = true;
+
+            playerMovement._velocity = storedVelocity;
+
+            playerMovement._velocity.y += upwardBoost;
             rb.bodyType = RigidbodyType2D.Kinematic;
+
         }
     }
-    void ApplyReleaseJump()
+
+    void HandleWallExit()
     {
-        Vector2 jumpForce = new Vector2(rb.linearVelocity.x, normalJumpForce);
-        rb.AddForce(jumpForce, ForceMode2D.Impulse);
+        if (!isSwinging) return;
+
+        float checkDistance = 0.6f;
+
+        RaycastHit2D leftHit = Physics2D.Raycast(transform.position, Vector2.left, checkDistance, AttachableLayers);
+        RaycastHit2D rightHit = Physics2D.Raycast(transform.position, Vector2.right, checkDistance, AttachableLayers);
+
+        if (leftHit || rightHit)
+        {
+            ReleaseToController();
+        }
+    }
+    void ReleaseToController()
+    {
+        storedVelocity = rb.linearVelocity;
+
+        Destroy(webJoint);
+        ClearWebLine();
+        isSwinging = false;
+
+        rb.linearDamping = 0f;
+
+        playerMovement.enabled = true;
+        controllerScript.enabled = true;
+
+        playerMovement._velocity = storedVelocity;
     }
     void DrawWebLine()
     {
